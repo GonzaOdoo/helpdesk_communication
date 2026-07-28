@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ========================= -->
+    <!-- Tree -->
+    <!-- ========================= -->
+
+    <record id="view_helpdesk_bridge_tree" model="ir.ui.view">
+        <field name="name">helpdesk.bridge.tree</field>
+        <field name="model">helpdesk.bridge</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="name"/>
+                <field name="url"/>
+                <field name="database"/>
+                <field name="username"/>
+                <field name="state"/>
+                <field name="active"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ========================= -->
+    <!-- Form -->
+    <!-- ========================= -->
+
+    <record id="view_helpdesk_bridge_form" model="ir.ui.view">
+        <field name="name">helpdesk.bridge.form</field>
+        <field name="model">helpdesk.bridge</field>
+        <field name="arch" type="xml">
+            <form>
+    
+                <sheet>
+    
+                    <group>
+    
+                        <group>
+    
+                            <field name="name"/>
+                            <field name="active"/>
+                            <field name="state" readonly="1"/>
+                            <field name="last_connection" readonly="1"/>
+    
+                        </group>
+    
+                        <group>
+    
+                            <field name="url"/>
+                            <field name="database"/>
+                            <field name="username"/>
+                            <field name="password" password="True"/>
+                            <field name="timeout"/>
+    
+                        </group>
+    
+                    </group>
+    
+                    <notebook>
+    
+                        <page string="Synchronization Rules">
+    
+                            <field name="field_ids">
+    
+                                <list editable="bottom">
+    
+                                    <field name="sequence" widget="handle"/>
+    
+                                    <field name="active"/>
+    
+                                    <field name="field_id"/>
+    
+                                    <field name="direction"/>
+    
+                                    <field name="sync_mode"/>
+    
+                                </list>
+    
+                                <form>
+    
+                                    <sheet>
+    
+                                        <group>
+    
+                                            <group>
+    
+                                                <field name="active"/>
+                                                <field name="sequence"/>
+                                                <field name="field_id"/>
+    
+                                            </group>
+    
+                                            <group>
+    
+                                                <field name="direction"/>
+                                                <field name="sync_mode"/>
+    
+                                            </group>
+    
+                                        </group>
+    
+                                        <field name="notes"/>
+    
+                                        <notebook>
+    
+                                            <page
+                                                string="Mappings"
+                                                invisible="not is_mapping_supported or sync_mode != 'mapping'"
+                                            >
+    
+                                                <field name="mapping_ids">
+    
+                                                    <list editable="bottom">
+    
+                                                        <field name="local_key"/>
+    
+                                                        <field name="remote_key"/>
+    
+                                                        <field name="description"/>
+    
+                                                    </list>
+    
+                                                </field>
+    
+                                            </page>
+    
+                                        </notebook>
+    
+                                    </sheet>
+    
+                                </form>
+    
+                            </field>
+    
+                        </page>
+    
+                    </notebook>
+    
+                </sheet>
+    
+            </form>
+        </field>
+    </record>
+
+    <!-- ========================= -->
+    <!-- Action -->
+    <!-- ========================= -->
+
+    <record id="action_helpdesk_bridge" model="ir.actions.act_window">
+        <field name="name">Bridges</field>
+        <field name="res_model">helpdesk.bridge</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <!-- ========================= -->
+    <!-- Menu -->
+    <!-- ========================= -->
+
+    <menuitem
+        id="menu_helpdesk_bridge"
+        name="Bridges"
+        parent="helpdesk.helpdesk_menu_config"
+        action="action_helpdesk_bridge"
+        sequence="90"/>
+
+</odoo>

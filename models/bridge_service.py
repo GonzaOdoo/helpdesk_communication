@@ -1,0 +1,174 @@
+from odoo import models
+from odoo.exceptions import UserError
+from lxml import html, etree
+from markupsafe import Markup
+import logging
+
+_logger = logging.getLogger(__name__)
+class HelpdeskBridgeService(models.AbstractModel):
+    _name = "helpdesk.bridge.service"
+
+    def create_remote_ticket(self, ticket):
+
+        team = ticket.team_id
+
+        if not team.bridge_id:
+            raise UserError("The team has no bridge configured.")
+
+        bridge = team.bridge_id
+
+        vals = {
+            "name": ticket.name,
+            "description": ticket.description,
+            "team_id":1,
+        }
+        remote_id = bridge.execute(
+            "helpdesk.ticket",
+            "create",
+            vals,
+        )
+        link = self.env["helpdesk.bridge.link"].create({
+            "bridge_id": bridge.id,
+            "local_ref": f"{ticket._name},{ticket.id}",
+            "remote_model": "helpdesk.ticket",
+            "remote_res_id": remote_id,
+            "state": "linked",
+        })
+        ticket.bridge_link_id = link
+
+
+    def _prepare_sync_values(self, ticket):
+        bridge = ticket.bridge_link_id.bridge_id
+    
+        vals = {}
+    
+        for rule in bridge.field_ids.filtered("active"):
+    
+            if rule.direction not in ("ab", "both"):
+                continue
+    
+            field = rule.field_id
+    
+            value = ticket[field.name]
+    
+            if rule.sync_mode == "mapping":
+                value = self._map_value(rule, value)
+    
+            else:
+                value = self._convert_value(field, value)
+    
+            vals[field.name] = value
+    
+        return vals
+
+    def _convert_value(self, field, value):
+        if field.ttype == "html":
+            return str(value or "")
+    
+        if field.ttype in (
+            "char",
+            "text",
+            "selection",
+            "boolean",
+            "integer",
+            "float",
+            "date",
+            "datetime",
+        ):
+            return value
+    
+        return False
+
+    def _map_value(self, rule, value):
+        mapping = rule.mapping_ids.filtered(
+            lambda m: m.local_key == str(value)
+        )[:1]
+    
+        if mapping:
+            return mapping.remote_key
+    
+        return value
+
+    
+    def sync_ticket(self, ticket):
+        bridge = ticket.bridge_link_id.bridge_id
+    
+        vals = self._prepare_sync_values(ticket)
+    
+        if not vals:
+            return
+    
+        link = ticket.bridge_link_id
+
+        bridge.execute(
+            "helpdesk.ticket",
+            "write",
+            [link.remote_res_id],
+            vals,
+            context={
+                "bridge_sync": True,
+            },
+        )
+
+    def sync_message(self, ticket, message):
+
+        link = ticket.bridge_link_id
+        bridge = link.bridge_id
+    
+        body = Markup(self._prepare_message_body(message))
+        _logger.info(body)
+        bridge.execute(
+            "helpdesk.ticket",
+            "message_post",
+            [link.remote_res_id],
+            body=body,
+            message_type="comment",
+            subtype_xmlid="mail.mt_comment",
+            context={
+                "bridge_sync": True,
+            },
+        )
+
+
+    def _prepare_message_body(self, message):
+        body = str(message.body or "")
+    
+        if not body:
+            return ""
+    
+        try:
+            root = html.fragment_fromstring(
+                body,
+                create_parent="div",
+            )
+    
+            # Eliminar enlaces internos de Odoo pero conservar su contenido.
+            for link in root.xpath(".//a"):
+                href = link.attrib.get("href", "")
+                if href.startswith("/odoo/"):
+                    link.drop_tag()
+    
+            # Eliminar atributos específicos de Odoo que ya no sirven.
+            for element in root.iter():
+                for attr in (
+                    "data-oe-id",
+                    "data-oe-model",
+                    "data-oe-type",
+                    "target",
+                    "class",
+                ):
+                    element.attrib.pop(attr, None)
+    
+            return "".join(
+                etree.tostring(
+                    child,
+                    encoding="unicode",
+                    method="html",
+                )
+                for child in root
+            )
+    
+        except Exception:
+            # Ante cualquier HTML mal formado,
+            # devolvemos el original.
+            return body

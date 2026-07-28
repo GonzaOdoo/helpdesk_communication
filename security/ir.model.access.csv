@@ -1,0 +1,6 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+
+access_helpdesk_bridge_user,helpdesk.bridge.user,model_helpdesk_bridge,base.group_user,1,1,1,1
+access_helpdesk_bridge_link_user,helpdesk.bridge.link.user,model_helpdesk_bridge_link,base.group_user,1,1,1,1
+access_helpdesk_bridge_field_user,helpdesk.bridge.field.user,model_helpdesk_bridge_field,base.group_user,1,1,1,1
+access_helpdesk_bridge_field_mapping_user,helpdesk.bridge.field.mapping.user,model_helpdesk_bridge_field_mapping,base.group_user,1,1,1,1

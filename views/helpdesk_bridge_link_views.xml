@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_helpdesk_bridge_link_tree" model="ir.ui.view">
+        <field name="name">helpdesk.bridge.link.tree</field>
+        <field name="model">helpdesk.bridge.link</field>
+        <field name="arch" type="xml">
+
+            <list>
+
+                <field name="uuid"/>
+
+                <field name="bridge_id"/>
+
+                <field name="local_ref"/>
+
+                <field name="remote_model"/>
+                <field name="remote_res_id"/>
+
+                <field name="state"/>
+
+                <field name="last_sync"/>
+
+            </list>
+
+        </field>
+    </record>
+
+    <record id="action_helpdesk_bridge_link" model="ir.actions.act_window">
+        <field name="name">Bridge Links</field>
+        <field name="res_model">helpdesk.bridge.link</field>
+        <field name="view_mode">list</field>
+    </record>
+
+    <menuitem
+        id="menu_helpdesk_bridge_link"
+        name="Bridge Links"
+        parent="helpdesk.helpdesk_menu_config"
+        action="action_helpdesk_bridge_link"
+        sequence="91"/>
+
+</odoo>
