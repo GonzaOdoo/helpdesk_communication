@@ -1,7 +1,8 @@
-from odoo import models
+from odoo import models, api
 from odoo.exceptions import UserError
 from lxml import html, etree
 from markupsafe import Markup
+from uuid import uuid4
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -9,9 +10,9 @@ class HelpdeskBridgeService(models.AbstractModel):
     _name = "helpdesk.bridge.service"
 
     def create_remote_ticket(self, ticket):
-
+        
         team = ticket.team_id
-
+        uuid = str(uuid4())
         if not team.bridge_id:
             raise UserError("The team has no bridge configured.")
 
@@ -22,19 +23,25 @@ class HelpdeskBridgeService(models.AbstractModel):
             "description": ticket.description,
             "team_id":1,
         }
+        payload = {
+            "vals": vals,
+            "uuid": uuid,
+        }
         remote_id = bridge.execute(
             "helpdesk.ticket",
-            "create",
-            vals,
+            "bridge_create_ticket",
+            payload,
         )
         link = self.env["helpdesk.bridge.link"].create({
             "bridge_id": bridge.id,
+            "uuid": uuid,
             "local_ref": f"{ticket._name},{ticket.id}",
             "remote_model": "helpdesk.ticket",
             "remote_res_id": remote_id,
             "state": "linked",
         })
         ticket.bridge_link_id = link
+        self.push_stage(ticket)
 
 
     def _prepare_sync_values(self, ticket):
@@ -129,6 +136,33 @@ class HelpdeskBridgeService(models.AbstractModel):
             },
         )
 
+    def push_message(self, ticket, message):
+        link = ticket.bridge_link_id
+        bridge = link.bridge_id
+    
+        body = Markup(self._prepare_message_body(message))
+    
+        bridge.execute(
+            "helpdesk.ticket",
+            "bridge_receive_message",
+            {
+                "uuid": link.uuid,
+                "body": body,
+            },
+        )
+
+    def push_stage(self, ticket):
+        link = ticket.bridge_link_id
+        bridge = link.bridge_id
+    
+        bridge.execute(
+            "helpdesk.ticket",
+            "bridge_receive_stage",
+            {
+                "uuid": link.uuid,
+                "stage_name": ticket.stage_id.display_name,
+            },
+        )
 
     def _prepare_message_body(self, message):
         body = str(message.body or "")

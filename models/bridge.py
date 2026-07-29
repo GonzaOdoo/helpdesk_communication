@@ -10,20 +10,16 @@ class HelpdeskBridge(models.Model):
     _rec_name = "name"
 
     name = fields.Char(required=True)
-
     active = fields.Boolean(default=True)
 
     url = fields.Char(
         required=True,
-        help="Example: https://support.company.com"
+        help="Example: https://support.company.com",
     )
 
     database = fields.Char(required=True)
-
     username = fields.Char(required=True)
-
     password = fields.Char(required=True)
-
     timeout = fields.Integer(default=30)
 
     last_connection = fields.Datetime(readonly=True)
@@ -37,15 +33,45 @@ class HelpdeskBridge(models.Model):
     company_id = fields.Many2one(
         "res.company",
     )
-    
-    sync_field_ids = fields.Many2many(
-        "ir.model.fields",
-        domain=[
-            ("model", "=", "helpdesk.ticket"),
-            ("store", "=", True),
+
+    role = fields.Selection(
+        [
+            ("initiator", "Initiator"),
+            ("support", "Support"),
         ],
-        string="Fields to synchronize",
+        default="initiator",
+        required=True,
+        help=(
+            "Initiator: creates and updates tickets in the remote system.\n"
+            "Support: receives tickets and only replies through the chatter."
+        ),
     )
+
+    sync_fields = fields.Boolean(
+        default=True,
+        help="Synchronize configured ticket fields.",
+    )
+
+    sync_messages = fields.Boolean(
+        default=True,
+        help="Synchronize chatter messages.",
+    )
+
+    allow_remote_ticket_creation = fields.Boolean(
+        default=False,
+        help="Allow the remote system to create tickets in this database.",
+    )
+
+    allow_remote_field_updates = fields.Boolean(
+        default=False,
+        help="Allow the remote system to update ticket fields.",
+    )
+
+    allow_remote_messages = fields.Boolean(
+        default=True,
+        help="Allow the remote system to post chatter messages.",
+    )
+
     field_ids = fields.One2many(
         "helpdesk.bridge.field",
         "bridge_id",
@@ -140,3 +166,28 @@ class HelpdeskBridge(models.Model):
                 "selection",
             ):
                 result[field.name] = ticket[field.name]
+
+
+    def can_push_fields(self):
+        self.ensure_one()
+        return self.sync_fields and self.role == "initiator"
+    
+    
+    def can_push_messages(self):
+        self.ensure_one()
+        return self.sync_messages
+    
+    
+    def can_receive_fields(self):
+        self.ensure_one()
+        return self.allow_remote_field_updates
+    
+    
+    def can_receive_messages(self):
+        self.ensure_one()
+        return self.allow_remote_messages
+    
+    
+    def can_receive_ticket_creation(self):
+        self.ensure_one()
+        return self.allow_remote_ticket_creation

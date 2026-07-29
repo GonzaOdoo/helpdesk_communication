@@ -38,6 +38,8 @@
     
                             <field name="name"/>
                             <field name="active"/>
+                            <field name="company_id"/>
+    
                             <field name="state" readonly="1"/>
                             <field name="last_connection" readonly="1"/>
     
@@ -57,7 +59,39 @@
     
                     <notebook>
     
-                        <page string="Synchronization Rules">
+                        <page string="Behavior">
+    
+                            <group>
+    
+                                <group string="Role">
+    
+                                    <field name="role"/>
+    
+                                </group>
+    
+                                <group string="Synchronization">
+    
+                                    <field name="sync_fields"/>
+                                    <field name="sync_messages"/>
+    
+                                </group>
+    
+                            </group>
+    
+                            <group string="Remote Permissions">
+    
+                                <field name="allow_remote_ticket_creation"/>
+                                <field name="allow_remote_field_updates"/>
+                                <field name="allow_remote_messages"/>
+    
+                            </group>
+    
+                        </page>
+    
+                        <page
+                            string="Synchronization Rules"
+                            invisible="not sync_fields"
+                        >
     
                             <field name="field_ids">
     

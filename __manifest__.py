@@ -14,7 +14,6 @@
         'views/helpdesk_bridge_link_views.xml',
         'views/helpdesk_bridge_views.xml',
         'views/helpdesk_ticket_views.xml',
-        'views/reporte_ausencia_views.xml',
     ],
     'license': 'LGPL-3',
     'installable': True,
