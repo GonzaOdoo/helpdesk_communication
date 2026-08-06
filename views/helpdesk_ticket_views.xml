@@ -28,6 +28,10 @@
                 </group>
 
             </xpath>
+              <xpath expr="//field[@name='partner_id']" position="before">
+                <field name="remote_ticket_ref" invisible="not bridge_uuid"/>
+                <field name="remote_stage_name" invisible="not bridge_uuid"/>
+              </xpath>
 
         </field>
 
