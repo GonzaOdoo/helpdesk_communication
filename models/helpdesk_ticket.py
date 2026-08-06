@@ -1,6 +1,6 @@
 from odoo import fields, models, api
 from markupsafe import Markup
-
+from odoo.exceptions import UserError
 
 class HelpdeskTicket(models.Model):
     _inherit = "helpdesk.ticket"
@@ -23,6 +23,11 @@ class HelpdeskTicket(models.Model):
 
     remote_stage_name = fields.Char(
         string="Estado en base sinc.",
+        readonly=True,
+        copy=False,
+    )
+    remote_ticket_ref = fields.Char(
+        string="Referencia base sinc.",
         readonly=True,
         copy=False,
     )
@@ -116,7 +121,11 @@ class HelpdeskTicket(models.Model):
     
         ticket.bridge_link_id = link
     
-        return ticket.id
+        return {
+            "id": ticket.id,
+            "ticket_ref": ticket.ticket_ref,
+            "stage":ticket.stage_id.name
+        }
 
     @api.model
     def bridge_receive_stage(self, payload):
@@ -137,3 +146,5 @@ class HelpdeskTicket(models.Model):
         })
     
         return True
+
+        

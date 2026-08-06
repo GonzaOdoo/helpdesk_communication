@@ -10,7 +10,16 @@ class HelpdeskBridgeService(models.AbstractModel):
     _name = "helpdesk.bridge.service"
 
     def create_remote_ticket(self, ticket):
-        
+        ticket.ensure_one()
+
+        if ticket.bridge_link_id:
+            return ticket.bridge_link_id
+        bridge_tag = self._get_bridge_tag(ticket)
+        if not bridge_tag:
+            return False
+        remote_team_id = bridge_tag.bridge_remote_team_id
+        if not remote_team_id:
+            return False
         team = ticket.team_id
         uuid = str(uuid4())
         if not team.bridge_id:
@@ -21,7 +30,8 @@ class HelpdeskBridgeService(models.AbstractModel):
         vals = {
             "name": ticket.name,
             "description": ticket.description,
-            "team_id":1,
+            "team_id": remote_team_id,
+            "remote_ticket_ref":ticket.ticket_ref,
         }
         payload = {
             "vals": vals,
@@ -37,10 +47,12 @@ class HelpdeskBridgeService(models.AbstractModel):
             "uuid": uuid,
             "local_ref": f"{ticket._name},{ticket.id}",
             "remote_model": "helpdesk.ticket",
-            "remote_res_id": remote_id,
+            "remote_res_id": remote_id["id"],
             "state": "linked",
         })
         ticket.bridge_link_id = link
+        ticket.remote_ticket_ref = remote_id["ticket_ref"]
+        ticket.remote_stage_name = remote_id["stage"]
         self.push_stage(ticket)
 
 
@@ -206,3 +218,37 @@ class HelpdeskBridgeService(models.AbstractModel):
             # Ante cualquier HTML mal formado,
             # devolvemos el original.
             return body
+
+
+    def _get_remote_team_id(self, ticket):
+        tags = ticket.tag_ids.filtered("bridge_remote_team_id")
+    
+        if not tags:
+            return False
+    
+        if len(tags) > 1:
+            raise UserError(
+                "El ticket tiene más de una etiqueta configurada para sincronización."
+            )
+    
+        return tags.bridge_remote_team_id
+
+    def _get_bridge_tag(self, ticket):
+        tags = ticket.tag_ids.filtered("bridge_enabled")
+    
+        if not tags:
+            return False
+    
+        if len(tags) > 1:
+            raise UserError(
+                "Solo puede existir una etiqueta de sincronización por ticket."
+            )
+    
+        tag = tags[0]
+    
+        if not tag.bridge_remote_team_id:
+            raise UserError(
+                "La etiqueta de sincronización no tiene configurado un equipo remoto."
+            )
+    
+        return tag
