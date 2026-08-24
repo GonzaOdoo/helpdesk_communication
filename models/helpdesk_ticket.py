@@ -31,6 +31,7 @@ class HelpdeskTicket(models.Model):
         readonly=True,
         copy=False,
     )
+    solicitante_ref = fields.Char("Solicitante")
 
     def _compute_is_bridge_ticket(self):
         for ticket in self:
@@ -147,4 +148,33 @@ class HelpdeskTicket(models.Model):
     
         return True
 
-        
+
+    @api.model
+    def support_receive_message(self, payload):
+        ticket_id = payload.get("ticket_id")
+        body = payload.get("body")
+    
+        if not ticket_id:
+            return False
+    
+        if not body:
+            return False
+    
+        ticket = self.browse(ticket_id).exists()
+    
+        if not ticket:
+            return False
+    
+        message = ticket.with_context(
+            support_sync=True,
+        ).message_post(
+            body=Markup(body),
+            message_type="comment",
+            subtype_xmlid="mail.mt_comment",
+        )
+    
+        message.write({
+            "support_sync": True,
+        })
+    
+        return message.id

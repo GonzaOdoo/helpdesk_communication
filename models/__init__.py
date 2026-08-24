@@ -4,3 +4,4 @@ from . import bridge_link
 from . import bridge_service
 from . import helpdesk_team
 from . import helpdesk_ticket
+from . import mail_message
