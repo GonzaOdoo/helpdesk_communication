@@ -1,7 +1,10 @@
 from odoo import fields, models, api
 from markupsafe import Markup
 from odoo.exceptions import UserError
+from lxml import html, etree
+import logging
 
+_logger = logging.getLogger(__name__)
 class HelpdeskTicket(models.Model):
     _inherit = "helpdesk.ticket"
 
@@ -75,7 +78,8 @@ class HelpdeskTicket(models.Model):
     @api.model
     def bridge_receive_message(self, payload):
         uuid = payload["uuid"]
-        body = payload["body"]
+        body = payload.get("body", "")
+        attachments = payload.get("attachments", [])
     
         link = self.env["helpdesk.bridge.link"].search([
             ("uuid", "=", uuid),
@@ -86,20 +90,48 @@ class HelpdeskTicket(models.Model):
     
         ticket = link.local_ref
     
-        ticket.with_context(
+        attachment_mapping = {}
+    
+        # Crear los attachments en la base remota
+        for attachment in attachments:
+            remote_attachment = self.env["ir.attachment"].with_context(
+                bridge_sync=True,
+            ).create({
+                "name": attachment["name"],
+                "datas": attachment["datas"],
+                "mimetype": attachment.get("mimetype"),
+                "description": attachment.get("description"),
+            })
+    
+            attachment_mapping[attachment["id"]] = remote_attachment
+    
+        # Reemplazar las referencias de las imágenes inline
+        body = self._replace_attachment_references(
+            body,
+            attachment_mapping,
+        )
+    
+        message = ticket.with_context(
             bridge_sync=True,
         ).message_post(
             body=Markup(body),
             message_type="comment",
             subtype_xmlid="mail.mt_comment",
+            attachment_ids=[
+                attachment.id
+                for attachment in attachment_mapping.values()
+            ],
         )
     
-        return True
+        return message.id
 
     @api.model
     def bridge_create_ticket(self, payload):
         vals = payload["vals"]
         uuid = payload["uuid"]
+    
+        attachments = vals.pop("attachments", [])
+    
         bridge = self.env["helpdesk.bridge"].search([
             ("role", "=", "support"),
         ], limit=1)
@@ -107,16 +139,50 @@ class HelpdeskTicket(models.Model):
         if not bridge:
             raise UserError("No support bridge configured.")
     
+        # Crear primero los attachments para obtener sus IDs remotos.
+        attachment_mapping = {}
+    
+        for attachment in attachments:
+            remote_attachment = self.env["ir.attachment"].with_context(
+                bridge_sync=True,
+            ).create({
+                "name": attachment["name"],
+                "datas": attachment["datas"],
+                "mimetype": attachment.get("mimetype"),
+                "description": attachment.get("description"),
+                "res_model": "helpdesk.ticket",
+                "res_id": 0,
+            })
+    
+            attachment_mapping[attachment["id"]] = remote_attachment
+            _logger.info(attachment_mapping)
+        # Reemplazar referencias de los attachments en la descripción.
+        vals["description"] = self._replace_attachment_references(
+            vals.get("description"),
+            attachment_mapping,
+        )
+        _logger.info("ANTES CREATE description: %s", vals.get("description"))
+
         ticket = self.with_context(
             bridge_sync=True,
         ).create(vals)
+        
+        _logger.info(
+            "DESPUES CREATE description: %s",
+            ticket.description,
+        )
+        # Asociar los attachments al ticket recién creado.
+        for attachment in attachment_mapping.values():
+            attachment.write({
+                "res_id": ticket.id,
+            })
     
         link = self.env["helpdesk.bridge.link"].create({
             "bridge_id": bridge.id,
             "uuid": uuid,
             "local_ref": f"{ticket._name},{ticket.id}",
             "remote_model": "helpdesk.ticket",
-            "remote_res_id": 0,      # luego hablamos de esto
+            "remote_res_id": 0,
             "state": "linked",
         })
     
@@ -125,7 +191,7 @@ class HelpdeskTicket(models.Model):
         return {
             "id": ticket.id,
             "ticket_ref": ticket.ticket_ref,
-            "stage":ticket.stage_id.name
+            "stage": ticket.stage_id.name,
         }
 
     @api.model
@@ -178,3 +244,56 @@ class HelpdeskTicket(models.Model):
         })
     
         return message.id
+
+
+
+    def _replace_attachment_references(self, body, attachment_mapping):
+        if not body or not attachment_mapping:
+            return body
+    
+        try:
+            root = html.fragment_fromstring(
+                body,
+                create_parent="div",
+            )
+    
+            for element in root.xpath(".//*[@data-attachment-id]"):
+                old_id = element.get("data-attachment-id")
+    
+                try:
+                    old_id = int(old_id)
+                except (TypeError, ValueError):
+                    continue
+    
+                attachment = attachment_mapping.get(old_id)
+    
+                if not attachment:
+                    continue
+    
+                new_id = attachment.id
+    
+                element.set(
+                    "data-attachment-id",
+                    str(new_id),
+                )
+    
+                if element.tag == "img":
+                    element.set(
+                        "src",
+                        f"/web/image/{new_id}",
+                    )
+    
+            return "".join(
+                etree.tostring(
+                    child,
+                    encoding="unicode",
+                    method="html",
+                )
+                for child in root
+            )
+    
+        except Exception:
+            _logger.exception(
+                "Could not replace attachment references in ticket description."
+            )
+            return body

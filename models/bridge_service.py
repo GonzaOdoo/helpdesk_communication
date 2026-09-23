@@ -1,7 +1,7 @@
 from odoo import models, api
 from odoo.exceptions import UserError
 from lxml import html, etree
-from markupsafe import Markup
+from markupsafe import Markup, escape
 from uuid import uuid4
 import logging
 
@@ -11,37 +11,52 @@ class HelpdeskBridgeService(models.AbstractModel):
 
     def create_remote_ticket(self, ticket):
         ticket.ensure_one()
-
+    
         if ticket.bridge_link_id:
             return ticket.bridge_link_id
+    
         bridge_tag = self._get_bridge_tag(ticket)
         if not bridge_tag:
             return False
+    
         remote_team_id = bridge_tag.bridge_remote_team_id
         if not remote_team_id:
             return False
+    
         team = ticket.team_id
         uuid = str(uuid4())
+    
         if not team.bridge_id:
             raise UserError("The team has no bridge configured.")
-
+    
         bridge = team.bridge_id
-
+    
+        attachments = self._prepare_attachments(
+            self.env["ir.attachment"].search([
+                ("res_model", "=", "helpdesk.ticket"),
+                ("res_id", "=", ticket.id),
+            ])
+        )
+        _logger.info(ticket.description)
         vals = {
             "name": ticket.name,
             "description": ticket.description,
             "team_id": remote_team_id,
-            "remote_ticket_ref":ticket.ticket_ref,
+            "remote_ticket_ref": ticket.ticket_ref,
+            "attachments": attachments,
         }
+    
         payload = {
             "vals": vals,
             "uuid": uuid,
         }
+    
         remote_id = bridge.execute(
             "helpdesk.ticket",
             "bridge_create_ticket",
             payload,
         )
+    
         link = self.env["helpdesk.bridge.link"].create({
             "bridge_id": bridge.id,
             "uuid": uuid,
@@ -50,9 +65,11 @@ class HelpdeskBridgeService(models.AbstractModel):
             "remote_res_id": remote_id["id"],
             "state": "linked",
         })
+    
         ticket.bridge_link_id = link
         ticket.remote_ticket_ref = remote_id["ticket_ref"]
         ticket.remote_stage_name = remote_id["stage"]
+    
         self.push_stage(ticket)
 
 
@@ -151,15 +168,38 @@ class HelpdeskBridgeService(models.AbstractModel):
     def push_message(self, ticket, message):
         link = ticket.bridge_link_id
         bridge = link.bridge_id
-    
-        body = Markup(self._prepare_message_body(message))
-    
+        
+        attachments = self._prepare_attachments(
+            message.attachment_ids
+        )
+        
+        body = self._prepare_message_body(message)
+        
+        author = message.author_id
+        
+        if author:
+            user = author.user_ids[:1]
+        
+            if user:
+                author_name = f"{author.name} ({user.login})"
+            else:
+                author_name = author.name
+        else:
+            author_name = "Usuario desconocido"
+        
+        body = Markup(
+            '<div style="margin-bottom: 8px;">'
+            f'<strong>{escape(author_name)}</strong>'
+            '</div>'
+        ) + Markup(body or "")
+        
         bridge.execute(
             "helpdesk.ticket",
             "bridge_receive_message",
             {
                 "uuid": link.uuid,
                 "body": body,
+                "attachments": attachments,
             },
         )
 
@@ -252,3 +292,24 @@ class HelpdeskBridgeService(models.AbstractModel):
             )
     
         return tag
+
+    def _prepare_attachments(self, attachments):
+        result = []
+    
+        for attachment in attachments:
+            if not attachment.datas:
+                continue
+    
+            result.append({
+                "id": attachment.id,
+                "name": attachment.name,
+                "datas": (
+                    attachment.datas.decode()
+                    if isinstance(attachment.datas, bytes)
+                    else attachment.datas
+                ),
+                "mimetype": attachment.mimetype,
+                "description": attachment.description,
+            })
+    
+        return result
